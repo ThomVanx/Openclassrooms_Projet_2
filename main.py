@@ -2,13 +2,18 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 import csv
+import os
+import re
+
+os.makedirs("output", exist_ok=True)
+os.makedirs("output_image", exist_ok=True)
+
+url_index = "https://books.toscrape.com/index.html"
 
 def get_soup(url):
     request = requests.get(url)
     soup = BeautifulSoup(request.text, "html.parser")
     return soup
-
-url_category = "https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html"
 
 def get_book_list_url(url):
     soup = get_soup(url)
@@ -32,9 +37,9 @@ def get_book_list_url_all_pages(url):
 def get_book_info(url_book):
 
     soup = get_soup(url_book)
-    title = soup.find("h1").text
+    title = soup.find("h1").text.strip()
     category = soup.find("ul", {"class":"breadcrumb"}).find_all("a")[2].text
-    descritption = soup.find("meta", {"name": "description"}).get("content")
+    description = soup.find("meta", {"name": "description"}).get("content")
     book_image_url = urljoin(url_book,soup.find("img")["src"])
 
     #EXTRACT BOOK INFO FROM PRODUCT INFO
@@ -66,24 +71,41 @@ def get_book_info(url_book):
                 "price_including_tax": tr_content["Price (incl. tax)"].replace("Â£", "") + " £",
                 "price_excluding_tax": tr_content["Price (excl. tax)"].replace("Â£", "") + " £",
                 "number_available": "".join(filter(str.isdigit, tr_content["Availability"])),
-                "product_description": descritption,
+                "product_description": description,
                 "category": category,
                 "review_rating": rating,
                 "image_url": book_image_url
                 }
+
+    #DOWNLOAD IMAGE
+    image_name = re.sub(r'[\\/*?:"<>|#]',"",title) + ".jpg"
+    image_path = os.path.join("output_image", image_name)
+    image_request = requests.get(book_image_url)
+    with open (image_path, "wb") as file :
+        file.write(image_request.content)
     
     return store_book_info
 
-result = []
-for book_url in get_book_list_url_all_pages(url_category):
-        result.append(get_book_info(book_url))
+def get_category_dict(url_index):
 
+    index_soup = get_soup(url_index)
+    url_category = {}
+    category_list = index_soup.find("ul", {"class":"nav nav-list"}).find("li").find("ul").find_all("li")
+    for category in category_list :
+        category_name = category.find("a").text.strip()
+        url_category[category_name] = urljoin(url_index,category.find("a")["href"])
+    return url_category
 
-with open ("book_info.csv", "w", newline="", encoding="utf-8") as out_csv :
-    writer = csv.DictWriter(out_csv, fieldnames=result[0].keys())
-    writer.writeheader()
-    writer.writerows(result)
+category_dict = get_category_dict(url_index)
 
-#print (get_book_info("https://books.toscrape.com/catalogue/sharp-objects_997/index.html"))
-
-
+for category in category_dict:
+    category_name_output = os.path.join("output", category + ".csv")
+    category_url = category_dict[category]
+    result = []
+    for book_url in get_book_list_url_all_pages(category_url):
+            result.append(get_book_info(book_url))
+    with open (category_name_output, "w", newline="", encoding="utf-8") as out_csv :
+        if result:
+            writer = csv.DictWriter(out_csv, fieldnames=result[0].keys())
+            writer.writeheader()
+            writer.writerows(result)
