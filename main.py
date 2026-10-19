@@ -4,21 +4,30 @@ from urllib.parse import urljoin
 import csv
 
 def get_soup(url):
-
     request = requests.get(url)
     soup = BeautifulSoup(request.text, "html.parser")
     return soup
 
-url_category = "https://books.toscrape.com/catalogue/category/books/mystery_3/index.html"
+url_category = "https://books.toscrape.com/catalogue/category/books/sequential-art_5/index.html"
 
-category_soup = get_soup(url_category)
+def get_book_list_url(url):
+    soup = get_soup(url)
+    book_list_url = []
+    
+    for urls in soup.find_all("h3"):
+        book_url = urljoin(url,urls.find("a").get("href"))
+        book_list_url.append(book_url)
 
-category_book_list_url = []
-for url in category_soup.find_all("h3"):
-    book_url = urljoin(url_category,url.find("a").get("href"))
-    category_book_list_url.append(book_url)
+    return book_list_url
 
-
+def get_book_list_url_all_pages(url):
+    soup = get_soup(url)
+    book_list_url_all = get_book_list_url(url)
+    while soup.find("li", {"class":"next"}):
+        url = urljoin(url,soup.find("li", {"class":"next"}).find("a")["href"])
+        book_list_url_all = book_list_url_all + get_book_list_url(url)
+        soup = get_soup(url)
+    return book_list_url_all
 
 def get_book_info(url_book):
 
@@ -66,7 +75,7 @@ def get_book_info(url_book):
     return store_book_info
 
 result = []
-for book_url in category_book_list_url:
+for book_url in get_book_list_url_all_pages(url_category):
         result.append(get_book_info(book_url))
 
 
@@ -76,4 +85,5 @@ with open ("book_info.csv", "w", newline="", encoding="utf-8") as out_csv :
     writer.writerows(result)
 
 #print (get_book_info("https://books.toscrape.com/catalogue/sharp-objects_997/index.html"))
+
 
