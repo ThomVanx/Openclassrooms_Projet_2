@@ -10,6 +10,7 @@ def get_soup(url):
     """Get soup from URL"""
     try :
         request = requests.get(url, timeout=10)
+        request.raise_for_status()
         soup = BeautifulSoup(request.text, "html.parser")
         return soup
     except requests.RequestException as e:
@@ -20,6 +21,8 @@ def get_soup(url):
 def get_book_list_url(url):
     """Get a list of book's URLs from an URL"""
     soup = get_soup(url)
+    if soup is None:
+        return []
     book_list_url = []
     
     for urls in soup.find_all("h3"):
@@ -41,10 +44,11 @@ def get_book_list_url_all_pages(url):
 
 def download_image(image_url, book_title, category):
     """Download the image from the image URL"""
+    image_name = re.sub(r'[\\/*?:"<>|#]',"",book_title) + ".jpg"
+    image_path = os.path.join("output_image", category, image_name)
     try:
-        image_name = re.sub(r'[\\/*?:"<>|#]',"",book_title) + ".jpg"
-        image_path = os.path.join("output_image", category, image_name)
         image_request = requests.get(image_url, timeout=10)
+        image_request.raise_for_status()
         with open (image_path, "wb") as file :
             file.write(image_request.content)
     except requests.RequestException as e:
@@ -54,6 +58,9 @@ def get_book_info(url_book):
     """Get all the infos from a book's URL and store into a dictionary. also execute the function
     download_image"""
     soup = get_soup(url_book)
+    if soup is None:
+        print(f"Skipping {url_book}")
+        return None
     title = soup.find("h1").text.strip()
     category = soup.find("ul", {"class":"breadcrumb"}).find_all("a")[2].text
     description = soup.find("meta", {"name": "description"}).get("content")
@@ -123,7 +130,9 @@ if __name__ == "__main__":
         category_name_output = os.path.join("output", category + ".csv")
         result = []
         for book_url in get_book_list_url_all_pages(category_dict[category]):
-                result.append(get_book_info(book_url))
+            book_info = get_book_info(book_url)
+            if book_info is not None:
+                result.append(book_info)
         with open (category_name_output, "w", newline="", encoding="utf-8") as out_csv :
             if result:
                 writer = csv.DictWriter(out_csv, fieldnames=result[0].keys())
